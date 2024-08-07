@@ -1,6 +1,6 @@
-# Server Management System
+# Laravel AWS Create & Manage
 
-Server Management System, kullanıcıların AWS EC2 örneklerini kolayca oluşturmasına, yönetmesine ve izlemesine olanak tanıyan bir web tabanlı uygulamadır. Bu sistem, kullanıcılara arayüz üzerinden sunucu oluşturma, durum kontrolü ve sunucu yönetim işlemleri gibi özellikler sunar.
+Laravel AWS Creator, kullanıcıların AWS EC2 örneklerini kolayca oluşturmasına, yönetmesine ve izlemesine olanak tanıyan bir web tabanlı uygulamadır. Bu sistem, kullanıcılara arayüz üzerinden sunucu oluşturma, durum kontrolü ve sunucu yönetim işlemleri gibi özellikler sunar.
 
 ## Özellikler
 
@@ -28,8 +28,8 @@ Projeyi yerel olarak kurmak ve çalıştırmak için aşağıdaki adımları tak
 
 ### Reposu Klonlayın
 ```bash
-git clone https://github.com/cancetinn/laravel-aws-creator.git
-cd laravel-aws-creator
+git clone https://github.com/cancetinn/Laravel-AWS-Creator.git
+cd Laravel-AWS-Creator
 ```
 
 ### Bağımlılıkları Yükleyin
