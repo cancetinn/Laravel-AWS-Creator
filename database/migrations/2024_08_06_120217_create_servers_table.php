@@ -14,6 +14,8 @@ class CreateServersTable extends Migration
             $table->string('server_name');
             $table->string('ip_address')->unique();
             $table->enum('status', ['pending', 'active', 'stopped'])->default('pending');
+            $table->integer('capacity')->default(1);
+            $table->string('type');
             $table->timestamps();
         });
     }
@@ -23,4 +25,3 @@ class CreateServersTable extends Migration
         Schema::dropIfExists('servers');
     }
 }
-

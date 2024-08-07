@@ -23,60 +23,38 @@
                     Oluştur
                 </button>
             </form>
-
-            <!-- Yükleme ekranı ve ilerleme çubuğu -->
-            <div id="loader" class="hidden mt-6">
-                <h2 class="text-white">Sunucu Oluşturuluyor...</h2>
-                <div id="progress" class="w-full bg-gray-300 rounded h-4 mt-2">
-                    <div id="progress-bar" class="bg-green-500 h-4 rounded" style="width: 0%"></div>
-                </div>
-                <p id="status-text" class="text-white mt-2">Adım 1: Başlatılıyor...</p>
-            </div>
+            <div id="message" class="mt-4"></div>
         </div>
     </div>
 
     <script>
-        document.getElementById('server-form').addEventListener('submit', function(event) {
-            event.preventDefault(); // Formun varsayılan gönderimini engelle
-            const formData = new FormData(this);
-            const progressBar = document.getElementById('progress-bar');
-            const statusText = document.getElementById('status-text');
-            let currentStep = 0;
+    document.getElementById('server-form').addEventListener('submit', function(event) {
+        event.preventDefault(); // Formun varsayılan gönderimini engelle
+        const formData = new FormData(this);
 
-            // Yükleme ekranını göster
-            document.getElementById('loader').classList.remove('hidden');
-
-            fetch('{{ route('servers.store') }}', {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                },
-            })
-            .then(response => response.json())
-            .then(data => {
-                const steps = data.steps;
-                function updateProgress() {
-                    if (currentStep < steps.length) {
-                        statusText.textContent = steps[currentStep];
-                        const progressPercent = ((currentStep + 1) / steps.length) * 100;
-                        progressBar.style.width = progressPercent + '%';
-                        currentStep++;
-
-                        setTimeout(updateProgress, 2000); // Her adım için 2 saniye bekle
-                    } else {
-                        document.getElementById('loader').style.display = 'none';
-                        if (data.error) {
-                            alert('Sunucu oluşturulurken hata oluştu!');
-                        } else {
-                            alert('Sunucu oluşturma işlemi tamamlandı!');
-                            window.location.href = '{{ route('servers.index') }}'; // Sunucular sayfasına yönlendir
-                        }
-                    }
-                }
-                updateProgress();
-            })
-            .catch(error => console.error('Hata:', error));
+        fetch('{{ route('servers.store') }}', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (!data.error) {
+                document.getElementById('message').innerHTML = '<div class="bg-green-500 text-white p-4 rounded">' + data.message + '</div>';
+                setTimeout(() => {
+                    window.location.href = '{{ route('servers.index') }}';
+                }, 2000); // 2 saniye sonra yönlendirme
+            } else {
+                console.error('Sunucu oluşturulurken hata oluştu:', data.message);
+                document.getElementById('message').innerHTML = '<div class="bg-red-500 text-white p-4 rounded">Hata: ' + data.message + '</div>';
+            }
+        })
+        .catch(error => {
+            console.error('Sunucu oluşturulurken AJAX hatası:', error);
+            document.getElementById('message').innerHTML = '<div class="bg-red-500 text-white p-4 rounded">AJAX hatası oluştu!</div>';
         });
+    });
     </script>
 </x-app-layout>

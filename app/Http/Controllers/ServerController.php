@@ -5,48 +5,33 @@ namespace App\Http\Controllers;
 use App\Models\Server;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Aws\Ec2\Ec2Client;
-use Aws\Exception\AwsException;
+use App\Jobs\CreateServerJob;
+use App\Services\AWSService;
+use Illuminate\Support\Facades\Log;
 
 class ServerController extends Controller
 {
+    protected $awsService;
+
+    public function __construct(AWSService $awsService)
+    {
+        $this->awsService = $awsService;
+    }
+
     public function dashboard()
     {
-        return view('dashboard');
+        // Dashboard için gerekli verileri hazırlayın
+        $servers = Server::where('user_id', Auth::id())->get();
+        return view('dashboard', compact('servers'));
     }
 
     public function index()
     {
-        // Kullanıcının sunucularını al
         $servers = Server::where('user_id', Auth::id())->get();
 
-        // AWS EC2 Client oluştur
-        $ec2Client = new Ec2Client([
-            'version' => 'latest',
-            'region'  => config('services.aws.region'),
-            'credentials' => [
-                'key'    => config('services.aws.key'),
-                'secret' => config('services.aws.secret'),
-            ],
-        ]);
-
-        $instances = [];
-
         try {
-            // Tüm EC2 örneklerini al
-            $result = $ec2Client->describeInstances();
-
-            foreach ($result['Reservations'] as $reservation) {
-                foreach ($reservation['Instances'] as $instance) {
-                    $instances[] = [
-                        'InstanceId' => $instance['InstanceId'],
-                        'InstanceType' => $instance['InstanceType'],
-                        'State' => $instance['State']['Name'],
-                        'PublicIpAddress' => $instance['PublicIpAddress'] ?? 'N/A',
-                    ];
-                }
-            }
-        } catch (AwsException $e) {
+            $instances = $this->awsService->getEC2Instances();
+        } catch (\Exception $e) {
             return redirect()->route('dashboard')->withErrors('Sunucular listelenirken hata oluştu: ' . $e->getMessage());
         }
 
@@ -60,77 +45,78 @@ class ServerController extends Controller
 
     public function store(Request $request)
     {
-        set_time_limit(0);
-    
-        $steps = [];
-    
-        // Adım 1: Veritabanı kaydı oluşturuluyor
-        $steps[] = "Adım 1: Veritabanı kaydı oluşturuluyor...";
-        sleep(2); // Simülasyon için bekleme süresi
-    
-        // Formu doğrula
         $request->validate([
             'server_name' => 'required|string|max:255',
             'instance_type' => 'required|string',
         ]);
-    
-        // AWS EC2 Client oluştur
-        $ec2Client = new Ec2Client([
-            'version' => 'latest',
-            'region'  => config('services.aws.region'),
-            'credentials' => [
-                'key'    => config('services.aws.key'),
-                'secret' => config('services.aws.secret'),
-            ],
-            'http'    => [
-                'debug' => false,
-            ],
-        ]);
-    
+
         try {
-            // Adım 2: API çağrısı yapılıyor
-            $steps[] = "Adım 2: API çağrısı yapılıyor...";
-            sleep(2); // Simülasyon için bekleme süresi
-    
-            $result = $ec2Client->runInstances([
-                'ImageId' => 'ami-0dd35f81b9eeeddb1', // Doğru AMI ID'sini kontrol edin
-                'InstanceType' => $request->instance_type,
-                'MinCount' => 1,
-                'MaxCount' => 1,
-                'KeyName' => 'my-key-pair', // Doğru key pair adı
-                // 'SecurityGroupIds' => ['sg-12345678'], // Gerekirse güvenlik grubu ekleyin
-                // 'SubnetId' => 'subnet-12345678', // Gerekirse subnet ekleyin
-            ]);
-    
-            $instanceId = $result['Instances'][0]['InstanceId'];
-    
-            // Adım 3: Dosya indiriliyor
-            $steps[] = "Adım 3: Dosya indiriliyor...";
-            sleep(2); // Simülasyon için bekleme süresi
-    
-            $ec2Client->waitUntil('InstanceRunning', [
-                'InstanceIds' => [$instanceId],
-            ]);
-    
-            $server = new Server();
-            $server->user_id = Auth::id();
-            $server->server_name = $request->server_name;
-            $server->ip_address = 'TBD'; // IP adresi AWS'den alınacak
-            $server->capacity = 1;
-            $server->type = $request->instance_type;
-            $server->status = 'active';
-            $server->aws_instance_id = $instanceId;
-            $server->save();
-    
-            $steps[] = "Sunucu oluşturma tamamlandı!";
-        } catch (AwsException $e) {
-            $steps[] = 'Sunucu oluşturulurken hata oluştu: ' . $e->getMessage();
-            return response()->json(['steps' => $steps, 'error' => true]);
+            $job = new CreateServerJob($request->server_name, $request->instance_type);
+            dispatch($job);
+
+            return response()->json(['message' => 'Sunucu başarıyla oluşturuldu!', 'error' => false]);
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Sunucu oluşturulurken hata oluştu: ' . $e->getMessage(), 'error' => true]);
         }
-    
-        return response()->json(['steps' => $steps, 'error' => false]);
+    }
+
+    public function viewMetrics($instanceId)
+    {
+        return view('servers.show', ['instanceId' => $instanceId]);
+    }
+
+    public function getServerStatuses()
+    {
+        try {
+            $instances = $this->awsService->getEC2Instances();
+            return response()->json(['instances' => $instances]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => true, 'message' => $e->getMessage()]);
+        }
+    }
+
+    public function startInstance($instanceId)
+    {
+        try {
+            $this->awsService->startEC2Instance($instanceId);
+            return response()->json(['message' => 'Sunucu başarıyla başlatıldı!', 'error' => false]);
+        } catch (\Exception $e) {
+            Log::error('Sunucu başlatma hatası: ' . $e->getMessage());
+            return response()->json(['message' => 'Sunucu başlatılırken hata oluştu: ' . $e->getMessage(), 'error' => true]);
+        }
+    }
+
+    public function stopInstance($instanceId)
+    {
+        try {
+            $this->awsService->stopEC2Instance($instanceId);
+            return response()->json(['message' => 'Sunucu başarıyla durduruldu!', 'error' => false]);
+        } catch (\Exception $e) {
+            Log::error('Sunucu durdurma hatası: ' . $e->getMessage());
+            return response()->json(['message' => 'Sunucu durdurulurken hata oluştu: ' . $e->getMessage(), 'error' => true]);
+        }
+    }
+
+    public function restartInstance($instanceId)
+    {
+        try {
+            $this->awsService->restartEC2Instance($instanceId);
+            return response()->json(['message' => 'Sunucu başarıyla yeniden başlatıldı!', 'error' => false]);
+        } catch (\Exception $e) {
+            Log::error('Sunucu yeniden başlatma hatası: ' . $e->getMessage());
+            return response()->json(['message' => 'Sunucu yeniden başlatılırken hata oluştu: ' . $e->getMessage(), 'error' => true]);
+        }
+    }
+
+    // Add this method
+    public function getInstanceStatus($instanceId)
+    {
+        try {
+            $status = $this->awsService->getEC2InstanceStatus($instanceId);
+            return response()->json(['status' => $status, 'error' => false]);
+        } catch (\Exception $e) {
+            Log::error('Sunucu durum hatası: ' . $e->getMessage());
+            return response()->json(['error' => true, 'message' => 'Sunucu durumu alınamadı.']);
+        }
     }
 }
-
-
-
